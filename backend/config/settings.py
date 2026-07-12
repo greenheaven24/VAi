@@ -77,7 +77,19 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # DATA_DIR points at a persistent location for SQLite + uploaded media. In
 # production set it to a mounted disk (e.g. /var/data on Render) so the DB and
 # uploads survive redeploys; locally it defaults to BASE_DIR.
+#
+# If DATA_DIR isn't actually writable — e.g. the env var points at a disk that
+# isn't mounted (hosts without a persistent disk, like Render's free tier) —
+# fall back to BASE_DIR so the app still boots. Data is then ephemeral and
+# resets on redeploy/restart, which is fine for a demo deployment.
 DATA_DIR = Path(os.environ.get('DATA_DIR', BASE_DIR))
+try:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _write_test = DATA_DIR / '.write_test'
+    _write_test.touch()
+    _write_test.unlink()
+except OSError:
+    DATA_DIR = BASE_DIR
 
 DATABASES = {
     'default': {
