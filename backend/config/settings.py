@@ -2,6 +2,7 @@
 Django settings for config project.
 """
 
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -10,12 +11,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-4lwp%yr(+abf5zsy--7ce5c7-u@uno4^cl0+z3!l_(krsw-6q-'
+# In production, set SECRET_KEY via an environment variable.
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-4lwp%yr(+abf5zsy--7ce5c7-u@uno4^cl0+z3!l_(krsw-6q-',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -36,6 +41,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -67,11 +73,16 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+#
+# DATA_DIR points at a persistent location for SQLite + uploaded media. In
+# production set it to a mounted disk (e.g. /var/data on Render) so the DB and
+# uploads survive redeploys; locally it defaults to BASE_DIR.
+DATA_DIR = Path(os.environ.get('DATA_DIR', BASE_DIR))
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': DATA_DIR / 'db.sqlite3',
     }
 }
 
@@ -113,10 +124,19 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
-# Media files (uploaded images)
+# Media files (uploaded images) — stored under the persistent DATA_DIR.
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = DATA_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -137,8 +157,24 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': False,
 }
 
-# CORS - allow the Next.js dev server to call this API.
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-]
+# CORS / CSRF - allowed frontend origin(s), comma-separated.
+# Defaults to the local Next.js dev server; in production set FRONTEND_URL to
+# the deployed frontend URL (e.g. https://vai.vercel.app).
+FRONTEND_URL = os.environ.get(
+    'FRONTEND_URL', 'http://localhost:3000,http://127.0.0.1:3000'
+)
+CORS_ALLOWED_ORIGINS = FRONTEND_URL.split(',')
+CSRF_TRUSTED_ORIGINS = FRONTEND_URL.split(',')
+
+
+# Production security hardening (only active when DEBUG is off). The platform
+# (e.g. Render) terminates TLS at its proxy, so tell Django to trust the
+# forwarded-proto header before enforcing HTTPS redirects/secure cookies.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 7  # 1 week
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
