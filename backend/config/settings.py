@@ -172,11 +172,13 @@ SIMPLE_JWT = {
 # CORS / CSRF - allowed frontend origin(s), comma-separated.
 # Defaults to the local Next.js dev server; in production set FRONTEND_URL to
 # the deployed frontend URL (e.g. https://vai.vercel.app).
-FRONTEND_URL = os.environ.get(
-    'FRONTEND_URL', 'http://localhost:3000,http://127.0.0.1:3000'
-)
-CORS_ALLOWED_ORIGINS = FRONTEND_URL.split(',')
-CSRF_TRUSTED_ORIGINS = FRONTEND_URL.split(',')
+#
+# `or <default>` guards against FRONTEND_URL being present but empty, and the
+# comprehension drops any blank entries — both would otherwise produce an
+# invalid '' origin that Django/corsheaders reject at startup.
+FRONTEND_URL = os.environ.get('FRONTEND_URL') or 'http://localhost:3000,http://127.0.0.1:3000'
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in FRONTEND_URL.split(',') if origin.strip()]
+CSRF_TRUSTED_ORIGINS = list(CORS_ALLOWED_ORIGINS)
 
 
 # Production security hardening (only active when DEBUG is off). The platform
